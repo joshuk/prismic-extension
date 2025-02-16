@@ -1,0 +1,21 @@
+{
+  "name": "Josh's (stupid) Prismic Helper",
+  "description": "A few helper functions for putting stuff in Prismic packaged up in a stupid package. Like seriously, what's the deal with the rat anyway?",
+  "version": "1.0",
+  "manifest_version": 3,
+  "action": {
+    "default_popup": "popup/index.html",
+    "default_icon": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "js": ["scripts/app.js"],
+      "matches": ["https://*.prismic.io/builder/*"]
+    }
+  ],
+  "host_permissions": [
+    "https://*.prismic.io/builder/*",
+    "https://api.internal.prismic.io/*"
+  ],
+  "permissions": ["storage"]
+}

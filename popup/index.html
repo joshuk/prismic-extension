@@ -1,0 +1,27 @@
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body style="margin: 0">
+    <img
+      src="./hello.jpg"
+      style="width: 200px; height: 200px; object-fit: cover"
+    />
+
+    <div class="form-wrapper js-form-wrapper">
+      <p>you need to visit a prismic repo first 😊</p>
+
+      <template class="js-field-template">
+        <div class="form-field">
+          <label class="js-label">
+            API key for <span class="js-repo-name"></span>:
+          </label>
+          <input class="js-input" type="text" placeholder="" />
+        </div>
+      </template>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+.form-wrapper {
+  margin: 1em 10px;
+}
+
+.form-wrapper label {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.form-field:not(:last-child) {
+  margin-bottom: 1em;
+}
