@@ -31,7 +31,7 @@
       const repoName = this.getRepoName()
       const { apiKeys } = await chrome.storage.local.get('apiKeys')
 
-      return apiKeys[repoName]
+      return apiKeys?.[repoName]
     }
 
     async getPageCustomType() {
@@ -93,7 +93,6 @@
           },
           body: JSON.stringify({
             statuses: ['unclassified', 'published'],
-            language: 'en-us',
             customTypes: fieldTypes.split(','),
             limit: 999, // I dunno how far this limit can go, so just freestyle it at 99 for now
             // If there's more than 999 of a certain type it's kinda fucked anyway idk
@@ -117,8 +116,20 @@
    */
 
   const labelField = (field, apiFields) => {
+    // We don't want to check fields that we've already checked
+    if (field.getAttribute('data-checked')) {
+      return
+    }
+
+    field.setAttribute('data-checked', 'true')
+
     // Figure out the field label
     const label = field.querySelector('label')
+
+    if (!label) {
+      return
+    }
+
     const fieldLabel = label.textContent.trim()
 
     // Now let's try to find that label in the apiFields
@@ -127,13 +138,25 @@
     })
 
     // We're only targetting Link fields here, so can ignore everything else
-    if (apiField.type !== 'Link') {
+    if (
+      !apiField ||
+      apiField.type !== 'Link' ||
+      apiField.config?.select !== 'document'
+    ) {
       return
     }
 
     // Add some attributes for now
     field.setAttribute('data-field-type', 'link')
     field.setAttribute('data-accepted', apiField.config.customtypes.join(','))
+  }
+
+  const getGroupFields = (groupName, fields) => {
+    const group = Object.values(fields).find(field => {
+      return field.type === 'Group' && field.config.label === groupName
+    })
+
+    return group.config.fields
   }
 
   const getSliceVariationFields = (sliceName, sliceVariation, fields) => {
@@ -215,12 +238,12 @@
         if (!foundDocument) {
           // No document, don't do anything here I guess lol
           console.warn(`
-            i couldn't find a document with the title ${fieldInput.getAttribute(
-              'value'
-            )} sorry 😭
+i couldn't find a document with the title ${fieldInput.getAttribute(
+            'value'
+          )} sorry 😭
 
 sorry again,
-the browser extension
+the browser extension 🙁
           `)
 
           continue
@@ -355,12 +378,7 @@ the browser extension
     document.body.appendChild(extensionStyles)
   }
 
-  const onPageLoad = async customFields => {
-    // Right so we've got the fields now, let's get the stuff that we're interested in
-    const apiFields = customFields.json.Main
-
-    // Now let's get the fields that are actually on the page
-    // We're just getting the main fields here, I'm gonna deal with the slices later
+  const processVisibleFields = apiFields => {
     const mainFields = document.querySelectorAll(
       'fieldset:first-child > div > div'
     )
@@ -368,6 +386,29 @@ the browser extension
     // So now let's loop through the fields and figure out what's what
     for (let field of mainFields) {
       labelField(field, apiFields)
+    }
+
+    // Now let's try to find any that are in groups
+    const groups = document.querySelectorAll('ul[aria-label="Group"]')
+
+    for (let group of groups) {
+      const groupHeaderText = group.parentElement
+        .querySelector('header')
+        .textContent.trim()
+      const splitGroupHeaderText = groupHeaderText.split('•')
+      const groupName = splitGroupHeaderText[0].trim()
+
+      const groupFields = getGroupFields(groupName, apiFields)
+
+      if (!groupFields) {
+        continue
+      }
+
+      const fields = group.querySelectorAll('li section > div')
+
+      for (let field of fields) {
+        labelField(field, groupFields)
+      }
     }
 
     const sliceFields = document.querySelectorAll('fieldset:not(:first-child)')
@@ -403,6 +444,51 @@ the browser extension
 
     // Right, now we can add the buttons to the fields
     addButtonsToFields()
+  }
+
+  // Lifted from https://www.30secondsofcode.org/js/s/debounce-function/
+  const debounce = (fn, ms = 0) => {
+    let timeoutId
+
+    return function (...args) {
+      clearTimeout(timeoutId)
+      timeoutId = setTimeout(() => fn.apply(this, args), ms)
+    }
+  }
+
+  const onScroll = apiFields => {
+    // There's no point us doing this when we're not on a page with fields, so ignore
+    if (!window.location.pathname.startsWith('/builder/pages/')) {
+      return
+    }
+
+    processVisibleFields(apiFields)
+  }
+
+  let onScrollDebounced = null
+  let scrollEvent = null
+
+  const onPageLoad = async customFields => {
+    // Right so we've got the fields now, let's get the stuff that we're interested in
+    const apiFields = customFields.json.Main
+
+    // Now let's get the fields that are visible on the page
+    processVisibleFields(apiFields)
+
+    onScrollDebounced = debounce(() => {
+      onScroll(apiFields)
+    }, 200)
+
+    // I can't believe that I actually need to do this, because I almost can't believe that
+    // this actually happens. For some stupid fucking reason, Prismic LAZY LOADS SOME OF THE
+    // FIELDS! It's almost like they're trying to make this site as hard as fucking possible
+    // to do anything with. Why did they do this? What insane performance benefits are you
+    // getting from doing that? I cannot tell you how annoyed I am that I have to deal with
+    // this dumb shit.
+    // Whatever, I just have to listen to the scroll event and do some debounced shit to
+    // process the fields when they become visible instead.
+    window.addEventListener('scroll', onScrollDebounced)
+    scrollEvent = true
 
     // Don't add the styles if those jawns already exist
     if (document.querySelector('.silly-extension-styles')) {
@@ -430,6 +516,8 @@ the browser extension
       // If we still don't have an API key, then we're not gonna go any further
       // Maybe complain a bit in the console though
       // TODO: Make this message less stupid maybe idk
+      const repoName = prismicApiHelper.getRepoName()
+
       console.error(
         `you didn't set an api key for this repo, so now i can't do anything 😭 sort it out please
 you can get an api key from https://${repoName}.prismic.io/settings/apps/ in the 'Write APIs' tab
@@ -476,7 +564,10 @@ the browser extension 😘`
 
     // Sometimes by the time the above is done the fields will be loaded in, so we can just continue
     if (document.querySelector('fieldset:first-child')) {
-      onPageLoad(customFields)
+      // Let's just delay this a little bit to try and make sure everything's loaded in fully
+      setTimeout(() => {
+        onPageLoad(customFields)
+      }, 200)
 
       return
     }
@@ -485,15 +576,24 @@ the browser extension 😘`
     // to do this is to create a MutationObserver that will liten for DOM changes, then call the function
     // when the field we want is available
     const config = { attributes: true, childList: true, subtree: true }
+    let timeout = null
 
     const callback = () => {
-      if (!document.querySelector('fieldset:first-child')) {
-        return
+      if (timeout) {
+        clearTimeout(timeout)
       }
 
-      // If we've got here then it's FINALLY available, so we can move on
-      onPageLoad(customFields)
-      observer.disconnect()
+      // Because for some reason Prismic can reload the DOM after it does it the first time, we're gonna debounce
+      // this function to try and make it work most of the time
+      timeout = setTimeout(() => {
+        if (!document.querySelector('fieldset:first-child')) {
+          return
+        }
+
+        // If we've got here then it's FINALLY available, so we can move on
+        onPageLoad(customFields)
+        observer.disconnect()
+      }, 200)
     }
 
     const observer = new MutationObserver(callback)
@@ -508,6 +608,11 @@ the browser extension 😘`
   const interval = setInterval(() => {
     if (window.location.href === page) {
       return
+    }
+
+    if (scrollEvent) {
+      window.removeEventListener('scroll', onScrollDebounced)
+      scrollEvent = null
     }
 
     onPageChange()

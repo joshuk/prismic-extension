@@ -10,3 +10,7 @@
 .form-field:not(:last-child) {
   margin-bottom: 1em;
 }
+
+.form-field input {
+  width: 100%;
+}
