@@ -379,6 +379,11 @@ the browser extension 🙁
   }
 
   const processVisibleFields = apiFields => {
+    // There's no point us doing this when we're not on a page with fields, so ignore
+    if (!window.location.pathname.startsWith('/builder/pages/')) {
+      return
+    }
+
     const mainFields = document.querySelectorAll(
       'fieldset:first-child > div > div'
     )
@@ -456,16 +461,7 @@ the browser extension 🙁
     }
   }
 
-  const onScroll = apiFields => {
-    // There's no point us doing this when we're not on a page with fields, so ignore
-    if (!window.location.pathname.startsWith('/builder/pages/')) {
-      return
-    }
-
-    processVisibleFields(apiFields)
-  }
-
-  let onScrollDebounced = null
+  let onScroll = null
   let scrollEvent = null
 
   const onPageLoad = async customFields => {
@@ -475,8 +471,8 @@ the browser extension 🙁
     // Now let's get the fields that are visible on the page
     processVisibleFields(apiFields)
 
-    onScrollDebounced = debounce(() => {
-      onScroll(apiFields)
+    onScroll = debounce(() => {
+      processVisibleFields(apiFields)
     }, 200)
 
     // I can't believe that I actually need to do this, because I almost can't believe that
@@ -487,7 +483,7 @@ the browser extension 🙁
     // this dumb shit.
     // Whatever, I just have to listen to the scroll event and do some debounced shit to
     // process the fields when they become visible instead.
-    window.addEventListener('scroll', onScrollDebounced)
+    window.addEventListener('scroll', onScroll)
     scrollEvent = true
 
     // Don't add the styles if those jawns already exist
@@ -611,7 +607,7 @@ the browser extension 😘`
     }
 
     if (scrollEvent) {
-      window.removeEventListener('scroll', onScrollDebounced)
+      window.removeEventListener('scroll', onScroll)
       scrollEvent = null
     }
 
